@@ -91,6 +91,12 @@ def _parser() -> argparse.ArgumentParser:
         help="Archive directory (default: results/pilots/<run-name>)",
     )
     arch.add_argument("--label", default=None, help="Human label stored in archive_meta.json")
+    arch.add_argument("--trajectory-version", default="v1", help="Recorded in archive_meta.json")
+    arch.add_argument(
+        "--no-audit-trail",
+        action="store_true",
+        help="Skip per-turn nodes, judgments, and conversation audit CSVs",
+    )
 
     cmp = sub.add_parser(
         "compare-runs",
@@ -530,7 +536,13 @@ def _parse_labeled_runs(pairs: list[str]) -> dict[str, str]:
 def cmd_archive_run(args) -> None:
     store = _store(args)
     dest = Path(args.dest) if args.dest else default_archive_dest(store.root)
-    meta = archive_run(store.root, dest, label=args.label or store.root.name)
+    meta = archive_run(
+        store.root,
+        dest,
+        label=args.label or store.root.name,
+        trajectory_version=args.trajectory_version,
+        include_audit_trail=not args.no_audit_trail,
+    )
     print(f"Archived {store.root} -> {dest}")
     if meta["missing"]:
         print(f"Missing optional files: {', '.join(meta['missing'])}")

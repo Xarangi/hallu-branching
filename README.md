@@ -114,7 +114,7 @@ python -m branching_hallucinations compare-runs \
   --out results/pilots/comparisons/halluhard-vs-factbench
 ```
 
-Full run trees stay in gitignored `runs/`. Committed pilot artifacts live under `results/pilots/<run-name>/`. `scripts/run_verified_pilot.py` archives automatically after `export-audit`.
+Full run trees stay in gitignored `runs/`. Committed pilot artifacts live under `results/pilots/<run-name>/` (summaries plus per-turn audit trail: `tree/nodes.jsonl`, judgment JSONL, and audit CSVs). `scripts/run_verified_pilot.py` archives automatically after `export-audit`.
 
 Scale with `configs/branching_final.toml` only after a ~10-seed manual audit of frozen `C` and a few D/N/V turns.
 

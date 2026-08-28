@@ -1,8 +1,10 @@
 {
   "label": "pilot-factbench",
   "source_run": "C:\\Users\\snehe\\Documents\\hallu-branching\\runs\\pilot-factbench",
-  "archived_at": "2026-08-28T15:00:35Z",
-  "git_sha": "edbfdc4ad5cc551673f780e293dc71e2f5d6619e",
+  "archived_at": "2026-08-28T15:16:40Z",
+  "git_sha": "e20b4ad4e246a396a768320be5990496696feda3",
+  "trajectory_version": "v1",
+  "include_audit_trail": true,
   "copied": [
     "manifest.json",
     "reports/summary.json",
@@ -11,7 +13,15 @@
     "analysis/t1_states.csv",
     "analysis/transitions.csv",
     "analysis/bootstrap.csv",
-    "seeds/verified.jsonl"
+    "seeds/verified.jsonl",
+    "tree/nodes.jsonl",
+    "reports/intervention_audit.csv",
+    "reports/trajectory_audit.csv",
+    "seeds/generated.jsonl",
+    "seeds/candidates.jsonl",
+    "seeds/verifications.jsonl",
+    "judgments/action_audit_v1.jsonl",
+    "judgments/trajectory_v1.jsonl"
   ],
   "missing": []
 }
