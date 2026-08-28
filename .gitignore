@@ -8,9 +8,9 @@ __pycache__/
 .vscode/
 
 # Generated HalluHard evals — keep directory placeholders
-**/results/*.jsonl
-**/results/*.json
-!**/results/.gitkeep
+halluhard/**/results/*.jsonl
+halluhard/**/results/*.json
+!halluhard/**/results/.gitkeep
 
 !**/data/*.jsonl
 **/data/*.json
@@ -18,6 +18,7 @@ __pycache__/
 *.html
 .DS_Store
 
-# Branching Hallucinations run artifacts
+# Branching Hallucinations run artifacts (full runs stay local)
 runs/*
 !runs/.gitkeep
+runs/*.log

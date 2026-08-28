@@ -1,0 +1,17 @@
+{
+  "label": "pilot-oss120b",
+  "source_run": "C:\\Users\\snehe\\Documents\\hallu-branching\\runs\\pilot-oss120b",
+  "archived_at": "2026-08-28T15:00:32Z",
+  "git_sha": "edbfdc4ad5cc551673f780e293dc71e2f5d6619e",
+  "copied": [
+    "manifest.json",
+    "reports/summary.json",
+    "reports/seed_audit.csv",
+    "analysis/summary.json",
+    "analysis/t1_states.csv",
+    "analysis/transitions.csv",
+    "analysis/bootstrap.csv",
+    "seeds/verified.jsonl"
+  ],
+  "missing": []
+}

@@ -18,6 +18,7 @@ from branching_hallucinations.env import load_branching_env
 load_branching_env()
 
 from branching_hallucinations.cli import main as cli_main
+from branching_hallucinations.archive import archive_run, default_archive_dest
 from branching_hallucinations.storage import RunStore
 
 
@@ -56,6 +57,17 @@ def main() -> int:
     parser.add_argument("--run", default="runs/pilot-oss120b")
     parser.add_argument("--target-verified", type=int, default=10)
     parser.add_argument("--batch", type=int, default=24)
+    parser.add_argument(
+        "--archive",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Archive summaries to results/pilots/ after export-audit (default: on)",
+    )
+    parser.add_argument(
+        "--archive-dest",
+        default=None,
+        help="Override archive directory (default: results/pilots/<run-name>)",
+    )
     args = parser.parse_args()
 
     common = ["--config", args.config, "--run", args.run]
@@ -95,6 +107,10 @@ def main() -> int:
     _run(["judge-trajectories", *common, "--version", "v1"])
     _run(["analyze", *common, "--trajectory-version", "v1"])
     _run(["export-audit", *common, "--trajectory-version", "v1"])
+    if args.archive:
+        dest = args.archive_dest or str(default_archive_dest(args.run))
+        meta = archive_run(args.run, dest, label=Path(args.run).name)
+        print(f"Archived -> {dest} ({len(meta['copied'])} files)", flush=True)
     print(f"Done. verified-false={n_verified} run={args.run}", flush=True)
     return 0
 

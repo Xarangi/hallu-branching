@@ -103,7 +103,18 @@ python -m branching_hallucinations analyze \
 
 python -m branching_hallucinations export-audit \
   --config configs/branching_pilot.toml --run runs/pilot --trajectory-version v1
+
+# Archive compact results for git (summaries, CSVs, frozen seeds)
+python -m branching_hallucinations archive-run \
+  --config configs/branching_pilot.toml --run runs/pilot
+
+# Compare two completed runs or archived pilots
+python -m branching_hallucinations compare-runs \
+  --run halluhard=runs/pilot-oss120b --run factbench=runs/pilot-factbench \
+  --out results/pilots/comparisons/halluhard-vs-factbench
 ```
+
+Full run trees stay in gitignored `runs/`. Committed pilot artifacts live under `results/pilots/<run-name>/`. `scripts/run_verified_pilot.py` archives automatically after `export-audit`.
 
 Scale with `configs/branching_final.toml` only after a ~10-seed manual audit of frozen `C` and a few D/N/V turns.
 

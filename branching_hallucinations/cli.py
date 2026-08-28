@@ -6,8 +6,11 @@ import argparse
 import asyncio
 import csv
 import sys
+from pathlib import Path
 
 from .analysis import analyze
+from .archive import archive_run, default_archive_dest
+from .compare import compare_and_write
 from .concurrency import bounded_map, clamp_concurrency
 from .config import DEFAULT_CONFIG, load_config, REPO_ROOT
 from .env import load_branching_env
@@ -76,6 +79,35 @@ def _parser() -> argparse.ArgumentParser:
     exp = sub.add_parser("export-audit", parents=[common], help="Export compact human-audit CSVs")
     exp.add_argument("--trajectory-version", default="v1")
     exp.add_argument("--audit-version", default="v1")
+
+    arch = sub.add_parser(
+        "archive-run",
+        parents=[common],
+        help="Copy summaries and frozen seeds into results/pilots/ for version control",
+    )
+    arch.add_argument(
+        "--dest",
+        default=None,
+        help="Archive directory (default: results/pilots/<run-name>)",
+    )
+    arch.add_argument("--label", default=None, help="Human label stored in archive_meta.json")
+
+    cmp = sub.add_parser(
+        "compare-runs",
+        help="Side-by-side comparison of completed runs or archived pilots",
+    )
+    cmp.add_argument(
+        "--run",
+        action="append",
+        metavar="LABEL=PATH",
+        required=True,
+        help="Label and run directory or summary.json path (repeatable)",
+    )
+    cmp.add_argument(
+        "--out",
+        default="results/pilots/comparisons/latest",
+        help="Output directory for comparison.json and comparison.md",
+    )
     return parser
 
 
@@ -481,6 +513,35 @@ def cmd_export_audit(args) -> None:
     print(f"Wrote {trajectory_path}")
 
 
+def _parse_labeled_runs(pairs: list[str]) -> dict[str, str]:
+    labeled: dict[str, str] = {}
+    for item in pairs:
+        if "=" not in item:
+            raise SystemExit(f"--run must be LABEL=PATH, got {item!r}")
+        label, path = item.split("=", 1)
+        label = label.strip()
+        path = path.strip()
+        if not label or not path:
+            raise SystemExit(f"--run must be LABEL=PATH, got {item!r}")
+        labeled[label] = path
+    return labeled
+
+
+def cmd_archive_run(args) -> None:
+    store = _store(args)
+    dest = Path(args.dest) if args.dest else default_archive_dest(store.root)
+    meta = archive_run(store.root, dest, label=args.label or store.root.name)
+    print(f"Archived {store.root} -> {dest}")
+    if meta["missing"]:
+        print(f"Missing optional files: {', '.join(meta['missing'])}")
+
+
+def cmd_compare_runs(args) -> None:
+    labeled = _parse_labeled_runs(args.run)
+    comparison = compare_and_write(labeled, args.out)
+    print(f"Wrote comparison for {', '.join(comparison['labels'])} to {args.out}")
+
+
 COMMANDS = {
     "init-run": cmd_init_run,
     "generate-seeds": cmd_generate_seeds,
@@ -491,6 +552,8 @@ COMMANDS = {
     "judge-trajectories": cmd_judge_trajectories,
     "analyze": cmd_analyze,
     "export-audit": cmd_export_audit,
+    "archive-run": cmd_archive_run,
+    "compare-runs": cmd_compare_runs,
 }
 
 
@@ -504,7 +567,7 @@ def main(argv: list[str] | None = None) -> int:
                 pass
     args = _parser().parse_args(argv)
     command = COMMANDS[args.command]
-    if args.command in {"analyze", "export-audit"}:
+    if args.command in {"analyze", "export-audit", "archive-run", "compare-runs"}:
         command(args)
         return 0
     asyncio.run(command(args))
