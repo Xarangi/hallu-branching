@@ -159,7 +159,12 @@ async def cmd_verify_seeds(args) -> None:
     store = _store(args)
     samplers = ExperimentSamplers.from_config(config)
     claims = store.candidate_claims()
-    done = store.completed_ids(store.verification_path, "claim_id")
+    prior = {item.claim_id: item for item in store.verifications()}
+    done = {
+        claim_id
+        for claim_id, item in prior.items()
+        if item.parse_status is not ParseStatus.FAILED
+    }
     already_verified = {item.seed_id for item in store.verified_seeds()}
     max_verified = args.max_verified or config.n_seeds
     n_verified = len(already_verified)
@@ -187,7 +192,13 @@ async def cmd_verify_seeds(args) -> None:
             seed, seed_claims = item
             try:
                 for claim in seed_claims:
-                    if claim.claim_id in done:
+                    existing = prior.get(claim.claim_id)
+                    if existing is not None and existing.parse_status is not ParseStatus.FAILED:
+                        if (
+                            existing.status is VerificationStatus.VERIFIED_FALSE
+                            and existing.parse_status.value != "failed"
+                        ):
+                            return ("ok", seed, claim, existing)
                         continue
                     result = await verify_claim(
                         claim=claim.text,
@@ -202,6 +213,7 @@ async def cmd_verify_seeds(args) -> None:
                     )
                     async with store.io_lock():
                         store.append_verification(result)
+                        prior[claim.claim_id] = result
                         done.add(claim.claim_id)
                     print(f"{claim.claim_id}: {result.status.value}")
                     if (
@@ -484,6 +496,13 @@ COMMANDS = {
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
     args = _parser().parse_args(argv)
     command = COMMANDS[args.command]
     if args.command in {"analyze", "export-audit"}:
