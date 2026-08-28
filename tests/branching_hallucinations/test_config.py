@@ -17,7 +17,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(cfg.depth, 2)
         self.assertEqual(cfg.actions, ("D", "N", "V"))
         self.assertEqual(cfg.grounding_method, "halluhard_webscraper")
-        self.assertEqual(cfg.answer.sampler, "azure-gpt-oss-20b")
+        self.assertEqual(cfg.answer.sampler, "azure-gpt-oss-120b")
         self.assertEqual(cfg.trajectory_judge.sampler, "azure-gpt-5-mini")
         self.assertNotIn("CORRECT", cfg.trajectory_states)
         self.assertEqual(cfg.dataset.name, "halluhard")

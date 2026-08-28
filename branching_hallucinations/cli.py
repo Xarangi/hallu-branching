@@ -7,9 +7,11 @@ import asyncio
 import csv
 import sys
 
+from dotenv import load_dotenv
+
 from .analysis import analyze
 from .concurrency import bounded_map, clamp_concurrency
-from .config import DEFAULT_CONFIG, load_config
+from .config import DEFAULT_CONFIG, load_config, REPO_ROOT
 from .interventions import audit_action
 from .models import ExperimentSamplers
 from .schemas import (
@@ -27,6 +29,8 @@ from .storage import (
 )
 from .trajectory_judge import judge_trajectory
 from .tree import expected_node_count, generate_tree
+
+load_dotenv(REPO_ROOT / ".env")
 
 
 def _parser() -> argparse.ArgumentParser:

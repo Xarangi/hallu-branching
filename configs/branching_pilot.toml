@@ -19,7 +19,7 @@ name = "halluhard"
 # grounding_task = "research_questions"
 
 [models.answer]
-sampler = "azure-gpt-oss-20b"
+sampler = "azure-gpt-oss-120b"
 max_tokens = 32768
 reasoning_effort = "low"
 

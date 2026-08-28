@@ -8,6 +8,7 @@ from libs.sampler.azure_openai_sampler import (
     extract_reasoning_text,
     extract_visible_text,
     is_unsupported_parameter,
+    normalize_azure_endpoint,
     uses_responses_api,
 )
 
@@ -27,6 +28,15 @@ class AzureSamplerHelperTests(unittest.TestCase):
     def test_gpt5_uses_responses_gptoss_uses_chat(self):
         self.assertTrue(uses_responses_api("gpt-5-mini"))
         self.assertFalse(uses_responses_api("gpt-oss-20b"))
+        self.assertFalse(uses_responses_api("gpt-oss-120b"))
+
+    def test_normalize_azure_endpoint_strips_responses_path(self):
+        self.assertEqual(
+            normalize_azure_endpoint(
+                "https://example.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview"
+            ),
+            "https://example.cognitiveservices.azure.com",
+        )
 
     def test_websearch_rejected(self):
         from libs.sampler.azure_openai_sampler import AzureOpenAISampler

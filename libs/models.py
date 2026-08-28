@@ -87,6 +87,13 @@ MODEL_REGISTRY = {
         "max_tokens": 32768,
         "websearch": False,
     },
+    "azure-gpt-oss-120b": {
+        "backend": "azure",
+        "model": "gpt-oss-120b",
+        "reasoning_effort": "low",
+        "max_tokens": 32768,
+        "websearch": False,
+    },
     "azure-gpt-5-mini": {
         "backend": "azure",
         "model": "gpt-5-mini",
