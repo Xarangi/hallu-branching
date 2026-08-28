@@ -75,59 +75,93 @@ async def close_pdf_session() -> None:
         _logger.debug("Closed shared aiohttp session for PDF downloads")
 
 
-# Embeddings can run against OpenAI directly or via the NVIDIA inference gateway.
-# When OPENAI_API_KEY is set we use OpenAI as before; otherwise we fall back to the
-# gateway (NVIDIA_INFERENCE_API_KEY), which serves the same text-embedding-3-small
-# model (1536-dim) under a catalog label.
+from libs.azure_env import azure_api_version, azure_credentials, azure_endpoint_for_api
+
 NVIDIA_INFERENCE_BASE_URL = "https://inference-api.nvidia.com/v1"
 _NVIDIA_EMBEDDING_MODEL = "us/azure/openai/eccn-text-embedding-3-small"
 _OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
+_DEFAULT_AZURE_EMBEDDING_DEPLOYMENT = "text-embedding-3-small"
+
+
+def _embedding_backend() -> str:
+    endpoint, key = azure_credentials()
+    if endpoint and key:
+        return "azure"
+    if os.getenv("OPENAI_API_KEY", "").strip():
+        return "openai"
+    if os.getenv("NVIDIA_INFERENCE_API_KEY", "").strip():
+        return "nvidia"
+    raise RuntimeError(
+        "Embeddings need AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY, "
+        "or OPENAI_API_KEY, or NVIDIA_INFERENCE_API_KEY for HalluHard fetch/filter."
+    )
 
 
 def get_embedding_model() -> str:
-    """Default embedding model id, depending on which backend is configured."""
-    if os.getenv("OPENAI_API_KEY"):
+    """Default embedding model/deployment id for the configured backend."""
+    backend = _embedding_backend()
+    if backend == "azure":
+        return os.getenv("AZURE_EMBEDDING_DEPLOYMENT", _DEFAULT_AZURE_EMBEDDING_DEPLOYMENT)
+    if backend == "openai":
         return _OPENAI_EMBEDDING_MODEL
     return _NVIDIA_EMBEDDING_MODEL
 
 
 def get_openai_client() -> AsyncOpenAI:
-    """Get or create the shared AsyncOpenAI client for embeddings.
-
-    Uses OpenAI when OPENAI_API_KEY is set; otherwise routes to the NVIDIA
-    inference gateway via NVIDIA_INFERENCE_API_KEY.
-    """
+    """Shared async client for embedding calls (Azure, OpenAI, or NVIDIA gateway)."""
     global _openai_client
-    if _openai_client is None:
-        # Configure httpx with bounded connection limits to prevent connection timeouts
-        # Force HTTP/1.1 to avoid TLS/HTTP2 issues on Windows
-        http_client = httpx.AsyncClient(
-            limits=httpx.Limits(
-                max_connections=50,  # Bounded to prevent connection exhaustion
-                max_keepalive_connections=25,
-            ),
-            timeout=httpx.Timeout(120.0, connect=30.0),
-            http1=True,
-            http2=False,
+    backend = _embedding_backend()
+    if _openai_client is not None and getattr(_openai_client, "_embedding_backend", None) == backend:
+        return _openai_client
+
+    http_client = httpx.AsyncClient(
+        limits=httpx.Limits(
+            max_connections=50,
+            max_keepalive_connections=25,
+        ),
+        timeout=httpx.Timeout(120.0, connect=30.0),
+        http1=True,
+        http2=False,
+    )
+    if backend == "azure":
+        endpoint, key = azure_credentials()
+        from openai import AsyncAzureOpenAI
+
+        client = AsyncAzureOpenAI(
+            azure_endpoint=endpoint,
+            api_key=key,
+            api_version=azure_api_version(),
+            timeout=120.0,
+            max_retries=0,
+            http_client=http_client,
         )
-        if os.getenv("OPENAI_API_KEY"):
-            _openai_client = AsyncOpenAI(
-                timeout=120.0,  # 2 minute timeout for all requests
-                max_retries=0,  # Disable built-in retries, we handle them with jitter
-                http_client=http_client,
-            )
-            _logger.debug("Created shared AsyncOpenAI client for embeddings (OpenAI, limit=50, http1=True)")
-        else:
-            nvidia_key = os.getenv("NVIDIA_INFERENCE_API_KEY")
-            assert nvidia_key, "Set OPENAI_API_KEY or NVIDIA_INFERENCE_API_KEY for embeddings"
-            _openai_client = AsyncOpenAI(
-                base_url=NVIDIA_INFERENCE_BASE_URL,
-                api_key=nvidia_key,
-                timeout=120.0,
-                max_retries=0,  # Disable built-in retries, we handle them with jitter
-                http_client=http_client,
-            )
-            _logger.debug("Created shared embeddings client (NVIDIA gateway, limit=50, http1=True)")
+        client._embedding_backend = backend  # type: ignore[attr-defined]
+        _openai_client = client
+        _logger.debug("Created shared Azure OpenAI client for embeddings")
+        return _openai_client
+
+    if backend == "openai":
+        client = AsyncOpenAI(
+            timeout=120.0,
+            max_retries=0,
+            http_client=http_client,
+        )
+        client._embedding_backend = backend  # type: ignore[attr-defined]
+        _openai_client = client
+        _logger.debug("Created shared OpenAI client for embeddings")
+        return _openai_client
+
+    nvidia_key = os.getenv("NVIDIA_INFERENCE_API_KEY", "").strip()
+    client = AsyncOpenAI(
+        base_url=NVIDIA_INFERENCE_BASE_URL,
+        api_key=nvidia_key,
+        timeout=120.0,
+        max_retries=0,
+        http_client=http_client,
+    )
+    client._embedding_backend = backend  # type: ignore[attr-defined]
+    _openai_client = client
+    _logger.debug("Created shared NVIDIA gateway client for embeddings")
     return _openai_client
 
 

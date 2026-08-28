@@ -41,9 +41,13 @@ libs/                       Azure samplers, Serper, HTML/PDF helpers
 
 ## Credentials
 
-Azure for every LLM role. Serper for search. `OPENAI_API_KEY` is not used on this path.
+Azure for every LLM role. Serper for search. HalluHard fetch/filter also needs an **Azure embedding deployment** (`AZURE_EMBEDDING_DEPLOYMENT`, default `text-embedding-3-small`). A machine-wide `OPENAI_API_KEY` is ignored when Azure creds are set.
 
 ```bash
+python -m venv .venv
+.venv\Scripts\pip install -r requirements-branching.txt   # Windows
+# or: pixi install
+
 export AZURE_OPENAI_ENDPOINT=https://YOUR-RESOURCE.openai.azure.com/
 export AZURE_OPENAI_API_KEY=...
 export AZURE_OPENAI_DEPLOYMENT=<gpt-oss deployment>
@@ -52,6 +56,7 @@ export AZURE_JUDGE_DEPLOYMENT=<gpt-5-mini deployment>
 export AZURE_EXTRACTOR_DEPLOYMENT=<gpt-5-mini deployment>
 export AZURE_VERIFIER_DEPLOYMENT=<gpt-5-mini deployment>
 export AZURE_SEARCH_DEPLOYMENT=<gpt-5-mini deployment>
+export AZURE_EMBEDDING_DEPLOYMENT=<text-embedding-3-small deployment>
 export SERPER_API_KEY=...
 ```
 

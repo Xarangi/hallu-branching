@@ -11,7 +11,11 @@ sys.path.insert(0, str(ROOT))
 
 from dotenv import load_dotenv
 
-load_dotenv(ROOT / ".env")
+load_dotenv(ROOT / ".env", override=True)
+
+from branching_hallucinations.env import load_branching_env
+
+load_branching_env()
 
 from branching_hallucinations.cli import main as cli_main
 from branching_hallucinations.storage import RunStore
@@ -31,8 +35,16 @@ def _count_generated(run: str) -> int:
     return len(store.generated_seeds())
 
 
+def _python() -> Path:
+    venv = ROOT / ".venv" / "Scripts" / "python.exe"
+    if venv.exists():
+        return venv
+    return Path(sys.executable)
+
+
 def _run(command: list[str]) -> None:
-    print("+", " ".join(command), flush=True)
+    py = str(_python())
+    print("+", py, "-m", "branching_hallucinations", *command, flush=True)
     code = cli_main(command)
     if code:
         raise SystemExit(code)
