@@ -13,3 +13,4 @@ beautifulsoup4>=4.13.5,<5
 lxml>=6.0.2,<7
 lxml-html-clean>=0.4.3,<0.5
 tomli>=2.0.0,<3
+anthropic>=0.40.0,<1
