@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import sys
+import asyncio
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -127,6 +128,48 @@ class TreeTests(unittest.TestCase):
         first, second, n_nodes = asyncio.run(_run())
         self.assertEqual(n_nodes, 12)
         self.assertEqual(first, second)
+
+    def test_two_seeds_share_cap_and_t2_sees_t1(self):
+        seed_a = _seed()
+        seed_b = VerifiedSeed(
+            seed_id="seed150",
+            question_id=150,
+            domain="research",
+            question="q2",
+            seed_answer="a2",
+            tracked_claim="tracked claim two",
+            tracked_claim_id="seed150/c0",
+            verification_status=VerificationStatus.VERIFIED_FALSE,
+            verification_reason="retrieved disagreement",
+        )
+
+        async def _run():
+            with tempfile.TemporaryDirectory() as tmp:
+                store = RunStore(tmp)
+                store.ensure()
+                writer = ScriptedSampler()
+                answer = ScriptedSampler(echo_prefix="gpt-oss")
+                created = await generate_tree(
+                    store,
+                    [seed_a, seed_b],
+                    answer_model=answer,
+                    writer=writer,
+                    actions=("D", "N", "V"),
+                    depth=2,
+                    concurrency=3,
+                )
+                nodes = store.nodes()
+                by_id = {node.node_id: node for node in nodes}
+                t2 = next(n for n in nodes if n.seed_id == seed_a.seed_id and n.path == ["D", "V"])
+                convo = conversation_for(t2.node_id, seed_a, by_id)
+                t1 = by_id[f"{seed_a.seed_id}/D"]
+                return created, nodes, convo, t1.assistant_response
+
+        created, nodes, convo, t1_answer = asyncio.run(_run())
+        self.assertEqual(len(nodes), 24)
+        self.assertEqual(len(created), 24)
+        self.assertEqual({n.seed_id for n in nodes}, {seed_a.seed_id, seed_b.seed_id})
+        self.assertIn(t1_answer, [message.content for message in convo])
 
 
 if __name__ == "__main__":
