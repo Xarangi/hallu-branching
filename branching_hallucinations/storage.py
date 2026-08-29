@@ -120,6 +120,10 @@ class RunStore:
         return self.seeds_dir / "verified.jsonl"
 
     @property
+    def exhausted_seeds_path(self) -> Path:
+        return self.seeds_dir / "exhausted_seeds.jsonl"
+
+    @property
     def nodes_path(self) -> Path:
         return self.tree_dir / "nodes.jsonl"
 

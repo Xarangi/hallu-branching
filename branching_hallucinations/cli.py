@@ -18,12 +18,15 @@ from .interventions import audit_action
 from .models import ExperimentSamplers
 from .schemas import (
     ParseStatus,
+    VerificationResult,
     VerificationStatus,
     VerifiedSeed,
 )
+from .seed_pool import SeedPool, claim_cache_key
 from .seeds import extract_claims_for_seed, generate_seeds
 from .storage import (
     RunStore,
+    append_jsonl,
     conversation_before_user_turn,
     conversation_for,
     render_conversation,
@@ -40,10 +43,9 @@ def _parser() -> argparse.ArgumentParser:
     common.add_argument("--config", default=str(DEFAULT_CONFIG), help="TOML config path")
     common.add_argument("--run", required=False, help="Run directory, e.g. runs/pilot")
     common.add_argument(
-        "--concurrency",
-        type=int,
-        default=None,
-        help="Max in-flight work units (overrides experiment.concurrency)",
+        "--no-seed-pool",
+        action="store_true",
+        help="Disable cross-run verification cache in data/seed_pools/",
     )
 
     parser = argparse.ArgumentParser(
@@ -114,7 +116,59 @@ def _parser() -> argparse.ArgumentParser:
         default="results/pilots/comparisons/latest",
         help="Output directory for comparison.json and comparison.md",
     )
+
+    pool_pub = sub.add_parser(
+        "publish-seed-pool",
+        parents=[common],
+        help="Merge verifications from a run into data/seed_pools/<fingerprint>/",
+    )
+    pool_pub.add_argument(
+        "--from",
+        dest="from_path",
+        default=None,
+        help="Run directory or archived pilot (default: --run)",
+    )
+
+    sub.add_parser(
+        "import-seed-pool",
+        parents=[common],
+        help="Import cached verifications and verified seeds into --run",
+    )
     return parser
+
+
+def _seed_pool(args, config) -> SeedPool | None:
+    if getattr(args, "no_seed_pool", False):
+        return None
+    return SeedPool.for_config(config)
+
+
+def _import_seed_pool(args, config, store: RunStore) -> None:
+    pool = _seed_pool(args, config)
+    if pool is None:
+        return
+    stats = pool.import_into_run(store)
+    if any(stats.to_dict().values()):
+        print(f"seed-pool import from {pool.root}: {stats.to_dict()}")
+
+
+def _publish_seed_pool(args, config, store: RunStore) -> None:
+    pool = _seed_pool(args, config)
+    if pool is None:
+        return
+    counts = pool.publish_run(store)
+    print(f"seed-pool publish -> {pool.root}: {counts}")
+
+
+def _lookup_verification(
+    prior_by_id: dict[str, VerificationResult],
+    prior_by_cache: dict[str, VerificationResult],
+    claim,
+) -> VerificationResult | None:
+    existing = prior_by_id.get(claim.claim_id)
+    if existing is not None and existing.parse_status is not ParseStatus.FAILED:
+        return existing
+    return prior_by_cache.get(claim_cache_key(claim.seed_id, claim.text))
 
 
 def _concurrency(args, config) -> int:
@@ -142,6 +196,7 @@ async def cmd_generate_seeds(args) -> None:
     config = load_config(args.config)
     store = _store(args)
     store.write_manifest(config)
+    _import_seed_pool(args, config, store)
     samplers = ExperimentSamplers.from_config(config)
     n_seeds = args.n or config.n_seeds
     limit = _concurrency(args, config)
@@ -163,6 +218,7 @@ async def cmd_generate_seeds(args) -> None:
 async def cmd_extract_claims(args) -> None:
     config = load_config(args.config)
     store = _store(args)
+    _import_seed_pool(args, config, store)
     samplers = ExperimentSamplers.from_config(config)
     done_seeds = {claim.seed_id for claim in store.candidate_claims()}
     pending = [seed for seed in store.generated_seeds() if seed.seed_id not in done_seeds]
@@ -194,15 +250,17 @@ async def cmd_verify_seeds(args) -> None:
 
     config = load_config(args.config)
     store = _store(args)
+    _import_seed_pool(args, config, store)
     samplers = ExperimentSamplers.from_config(config)
     claims = store.candidate_claims()
-    prior = {item.claim_id: item for item in store.verifications()}
-    done = {
-        claim_id
-        for claim_id, item in prior.items()
-        if item.parse_status is not ParseStatus.FAILED
-    }
+    prior_by_id = {item.claim_id: item for item in store.verifications()}
+    prior_by_cache: dict[str, VerificationResult] = {}
+    for claim in claims:
+        result = prior_by_id.get(claim.claim_id)
+        if result is not None and result.parse_status is not ParseStatus.FAILED:
+            prior_by_cache[claim_cache_key(claim.seed_id, claim.text)] = result
     already_verified = {item.seed_id for item in store.verified_seeds()}
+    exhausted = store.completed_ids(store.exhausted_seeds_path, "seed_id")
     max_verified = args.max_verified or config.n_seeds
     n_verified = len(already_verified)
     by_seed: dict[str, list] = {}
@@ -210,7 +268,7 @@ async def cmd_verify_seeds(args) -> None:
         by_seed.setdefault(claim.seed_id, []).append(claim)
     remaining = []
     for seed in store.generated_seeds():
-        if seed.seed_id in already_verified:
+        if seed.seed_id in already_verified or seed.seed_id in exhausted:
             continue
         seed_claims = by_seed.get(seed.seed_id)
         if not seed_claims:
@@ -229,13 +287,10 @@ async def cmd_verify_seeds(args) -> None:
             seed, seed_claims = item
             try:
                 for claim in seed_claims:
-                    existing = prior.get(claim.claim_id)
-                    if existing is not None and existing.parse_status is not ParseStatus.FAILED:
-                        if (
-                            existing.status is VerificationStatus.VERIFIED_FALSE
-                            and existing.parse_status.value != "failed"
-                        ):
-                            return ("ok", seed, claim, existing)
+                    existing = _lookup_verification(prior_by_id, prior_by_cache, claim)
+                    if existing is not None:
+                        if existing.status is VerificationStatus.VERIFIED_FALSE:
+                            return ("vf", seed, claim, existing)
                         continue
                     result = await verify_claim(
                         claim=claim.text,
@@ -250,15 +305,16 @@ async def cmd_verify_seeds(args) -> None:
                     )
                     async with store.io_lock():
                         store.append_verification(result)
-                        prior[claim.claim_id] = result
-                        done.add(claim.claim_id)
+                        prior_by_id[claim.claim_id] = result
+                        if result.parse_status is not ParseStatus.FAILED:
+                            prior_by_cache[claim_cache_key(claim.seed_id, claim.text)] = result
                     print(f"{claim.claim_id}: {result.status.value}")
                     if (
                         result.status is VerificationStatus.VERIFIED_FALSE
-                        and result.parse_status.value != "failed"
+                        and result.parse_status is not ParseStatus.FAILED
                     ):
-                        return ("ok", seed, claim, result)
-                return ("ok", seed, None, None)
+                        return ("vf", seed, claim, result)
+                return ("exhausted", seed, None, None)
             except Exception as exc:
                 return ("err", seed, exc, None)
 
@@ -269,7 +325,13 @@ async def cmd_verify_seeds(args) -> None:
                 if first_err is None:
                     first_err = claim_or_exc
                 continue
-            if n_verified >= max_verified or claim_or_exc is None:
+            if tag == "exhausted":
+                if seed.seed_id not in exhausted:
+                    append_jsonl(store.exhausted_seeds_path, {"seed_id": seed.seed_id})
+                    exhausted.add(seed.seed_id)
+                    print(f"EXHAUSTED {seed.seed_id}: no verified-false claim")
+                continue
+            if n_verified >= max_verified or tag != "vf":
                 continue
             claim, result = claim_or_exc, result
             verified = VerifiedSeed(
@@ -289,10 +351,12 @@ async def cmd_verify_seeds(args) -> None:
                 verification_metadata=result.to_dict(),
             )
             store.append_verified(verified)
+            already_verified.add(seed.seed_id)
             n_verified += 1
             print(f"FROZEN {verified.seed_id}: {verified.tracked_claim[:120]}")
         if first_err is not None:
             raise first_err
+    _publish_seed_pool(args, config, store)
     print(f"Verified-false seeds: {len(store.verified_seeds())} in {store.verified_seeds_path}")
 
 
@@ -554,6 +618,19 @@ def cmd_compare_runs(args) -> None:
     print(f"Wrote comparison for {', '.join(comparison['labels'])} to {args.out}")
 
 
+def cmd_publish_seed_pool(args) -> None:
+    config = load_config(args.config)
+    source = Path(args.from_path) if args.from_path else _store(args).root
+    pool, counts = SeedPool.from_run(source, config)
+    print(f"Published {source} -> {pool.root}: {counts}")
+
+
+def cmd_import_seed_pool(args) -> None:
+    config = load_config(args.config)
+    store = _store(args)
+    _import_seed_pool(args, config, store)
+
+
 COMMANDS = {
     "init-run": cmd_init_run,
     "generate-seeds": cmd_generate_seeds,
@@ -566,6 +643,8 @@ COMMANDS = {
     "export-audit": cmd_export_audit,
     "archive-run": cmd_archive_run,
     "compare-runs": cmd_compare_runs,
+    "publish-seed-pool": cmd_publish_seed_pool,
+    "import-seed-pool": cmd_import_seed_pool,
 }
 
 
@@ -579,7 +658,14 @@ def main(argv: list[str] | None = None) -> int:
                 pass
     args = _parser().parse_args(argv)
     command = COMMANDS[args.command]
-    if args.command in {"analyze", "export-audit", "archive-run", "compare-runs"}:
+    if args.command in {
+        "analyze",
+        "export-audit",
+        "archive-run",
+        "compare-runs",
+        "publish-seed-pool",
+        "import-seed-pool",
+    }:
         command(args)
         return 0
     asyncio.run(command(args))

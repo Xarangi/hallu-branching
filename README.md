@@ -114,6 +114,22 @@ python -m branching_hallucinations compare-runs \
   --out results/pilots/comparisons/halluhard-vs-factbench
 ```
 
+### Seed pool (reuse verifications across runs)
+
+Verified-false seeds and completed claim verifications are cached under `data/seed_pools/<fingerprint>/`, keyed by answer model, dataset, extractor, verifier, and grounding stack (not trajectory judge). `verify-seeds` imports from the pool automatically and publishes after each run. Use `--no-seed-pool` to disable.
+
+```bash
+# Bootstrap pool from an existing run or archived pilot
+python -m branching_hallucinations publish-seed-pool \
+  --config configs/branching_pilot.toml --from results/pilots/pilot-oss120b
+
+# Explicit import into a new run (also happens at generate/extract/verify)
+python -m branching_hallucinations import-seed-pool \
+  --config configs/branching_pilot.toml --run runs/pilot-v2
+```
+
+Seeds where every claim was checked and none was `VERIFIED_FALSE` are marked **exhausted** and skipped on future runs.
+
 Full run trees stay in gitignored `runs/`. Committed pilot artifacts live under `results/pilots/<run-name>/` (summaries plus per-turn audit trail: `tree/nodes.jsonl`, judgment JSONL, and audit CSVs). `scripts/run_verified_pilot.py` archives automatically after `export-audit`.
 
 Scale with `configs/branching_final.toml` only after a ~10-seed manual audit of frozen `C` and a few D/N/V turns.

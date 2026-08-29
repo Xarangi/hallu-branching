@@ -1,0 +1,66 @@
+{
+  "schema": "branching_hallucinations.seed_pool.v1",
+  "fingerprint": "8c14663c914838fb",
+  "stack": {
+    "schema": "branching_hallucinations.seed_pool.v1",
+    "answer_model": {
+      "sampler": "azure-gpt-oss-120b",
+      "deployment": "",
+      "max_tokens": 32768,
+      "reasoning_effort": "low",
+      "temperature": null,
+      "api": null
+    },
+    "claim_extractor_model": {
+      "sampler": "azure-gpt-5-mini",
+      "deployment": "",
+      "max_tokens": null,
+      "reasoning_effort": null,
+      "temperature": null,
+      "api": null
+    },
+    "grounded_verifier_model": {
+      "sampler": "azure-gpt-5-mini-medium",
+      "deployment": "",
+      "max_tokens": null,
+      "reasoning_effort": null,
+      "temperature": null,
+      "api": null
+    },
+    "search_planner_model": {
+      "sampler": "azure-gpt-5-mini",
+      "deployment": "",
+      "max_tokens": null,
+      "reasoning_effort": null,
+      "temperature": null,
+      "api": null
+    },
+    "dataset": {
+      "name": "halluhard",
+      "path": "",
+      "question_field": "question",
+      "domain_field": "domain",
+      "id_field": "id",
+      "grounding_task": "research_questions",
+      "grounding_tasks": {}
+    },
+    "grounding_method": "halluhard_webscraper",
+    "max_searches": 3,
+    "max_claims_per_seed": 8,
+    "prompt_hashes": {
+      "claim_extraction": "43a7a8aa3c83e4d2",
+      "grounded_verifier": "07be27d359c6ce5b"
+    }
+  },
+  "updated_at": "2026-08-29T03:17:31Z",
+  "source_runs": [
+    "C:\\Users\\snehe\\Documents\\hallu-branching\\results\\pilots\\pilot-oss120b"
+  ],
+  "counts": {
+    "generated": 72,
+    "candidates": 568,
+    "verifications": 290,
+    "verified": 11,
+    "exhausted": 29
+  }
+}
